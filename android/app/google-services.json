@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "985932950674",
+    "project_id": "roadlens-5ac14",
+    "storage_bucket": "roadlens-5ac14.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:985932950674:android:f834de12e0835052618a4b",
+        "android_client_info": {
+          "package_name": "com.example.streetlens"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "985932950674-07l1ocq8ldt5aunblp5qo36b2f4l5923.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.streetlens",
+            "certificate_hash": "3b718c3b6c99578e7e500f43cf2daa217bc42f04"
+          }
+        },
+        {
+          "client_id": "985932950674-f0d4b4osk4vue96bs4u80uqvq5srtbnh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwKnlcYrwIY8dfgjpGRhARE6MXzeJewpM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "985932950674-f0d4b4osk4vue96bs4u80uqvq5srtbnh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "985932950674-2hvmgf6kfvm1la1o1lrbkqhqbk495nbc.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.streetlens"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
