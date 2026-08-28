@@ -14,10 +14,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(
-    text: 'inspector@streetlens.app',
-  );
-  final _passwordController = TextEditingController(text: 'streetlens');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
@@ -33,6 +31,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final success = await ref
         .read(authControllerProvider.notifier)
         .signIn(_emailController.text, _passwordController.text);
+    if (success && mounted) context.go('/monitor');
+  }
+
+  Future<void> _googleSignIn() async {
+    FocusScope.of(context).unfocus();
+    final success = await ref
+        .read(authControllerProvider.notifier)
+        .signInWithGoogle();
     if (success && mounted) context.go('/monitor');
   }
 
@@ -112,6 +118,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               _AuthError(message: state.errorMessage!),
               const SizedBox(height: 12),
             ],
+            if (state.infoMessage != null) ...[
+              Text(
+                state.infoMessage!,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+            ],
             FilledButton(
               key: const Key('login-button'),
               onPressed: loading ? null : _submit,
@@ -143,17 +157,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
             const SizedBox(height: 18),
             OutlinedButton.icon(
-              onPressed: loading
-                  ? null
-                  : () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Google sign-in is a Phase 2 integration placeholder.',
-                          ),
-                        ),
-                      );
-                    },
+              key: const Key('google-sign-in-button'),
+              onPressed: loading ? null : _googleSignIn,
               icon: const Text(
                 'G',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -165,7 +170,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               alignment: WrapAlignment.center,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Text('New to StreetLens?'),
+                const Text('New to RoadLens?'),
                 TextButton(
                   onPressed: loading ? null : () => context.push('/register'),
                   child: const Text('Create account'),

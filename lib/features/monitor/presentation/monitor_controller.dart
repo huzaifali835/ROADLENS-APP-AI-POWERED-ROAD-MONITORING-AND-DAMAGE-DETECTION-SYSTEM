@@ -142,7 +142,7 @@ class MonitorController extends StateNotifier<MonitorViewState> {
           state = state.copyWith(
             cameraStatus: CameraInitializationStatus.permissionRequired,
             cameraMessage:
-                'StreetLens uses the rear camera only while Monitor is open.',
+                'RoadLens uses the rear camera only while Monitor is open.',
           );
         case CameraPermissionStatus.permanentlyDenied:
           state = state.copyWith(
@@ -245,7 +245,8 @@ class MonitorController extends StateNotifier<MonitorViewState> {
             LocationPermissionStatus.unknown:
           state = state.copyWith(
             locationStatus: MonitorLocationStatus.permissionRequired,
-            locationMessage: 'Location is used while StreetLens is open to tag future scans.',
+            locationMessage:
+                'Location is used while RoadLens is open to tag future scans.',
           );
         case LocationPermissionStatus.permanentlyDenied:
           state = state.copyWith(

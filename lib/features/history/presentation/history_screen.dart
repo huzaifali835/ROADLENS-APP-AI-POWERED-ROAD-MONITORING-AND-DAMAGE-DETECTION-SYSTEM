@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/responsive_content.dart';
@@ -8,6 +9,8 @@ import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/severity_badge.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../data/models/detection.dart';
+import '../../auth/presentation/auth_controller.dart';
+import 'complaint_dialog.dart';
 import 'history_controller.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -18,13 +21,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
-  final _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  final Set<String> _recordedComplaintIds = {};
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +29,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return SafeArea(
       bottom: false,
       child: switch (state.status) {
-        HistoryLoadStatus.loading => const AppLoadingView(
-          label: 'Loading detection history...',
-        ),
+        HistoryLoadStatus.loading => const _HistorySkeleton(),
         HistoryLoadStatus.error => AppErrorView(
           message: state.errorMessage ?? 'Something went wrong.',
           onRetry: () => ref.read(historyControllerProvider.notifier).load(),
@@ -45,365 +40,259 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildHistory(BuildContext context, HistoryViewState state) {
+    final controller = ref.read(historyControllerProvider.notifier);
     final records = state.visibleRecords;
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: ResponsiveContent(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SectionHeader(
-                    title: 'Detection History',
-                    subtitle:
-                        '${state.records.length} locally stored road reports.',
-                  ),
-                  const SizedBox(height: 18),
-                  TextField(
-                    key: const Key('history-search-field'),
-                    controller: _searchController,
-                    onChanged: ref
-                        .read(historyControllerProvider.notifier)
-                        .search,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Search damage, severity or street',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: state.query.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: 'Clear search',
-                              onPressed: () {
-                                _searchController.clear();
-                                ref
-                                    .read(historyControllerProvider.notifier)
-                                    .search('');
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
+    return RefreshIndicator(
+      onRefresh: controller.load,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: ResponsiveContent(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SectionHeader(
+                      title: 'History',
+                      subtitle:
+                          '${state.records.length} Firebase demo detections',
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      height: 40,
+                      child: ListView(
+                        key: const Key('history-category-filters'),
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          _CategoryChip(
+                            key: const Key('history-filter-all'),
+                            label: 'All',
+                            selected: state.filter == null,
+                            onTap: () => controller.setFilter(null),
+                          ),
+                          for (final category in DamageType.values) ...[
+                            const SizedBox(width: 8),
+                            _CategoryChip(
+                              key: Key('history-filter-${category.id}'),
+                              label: category.label,
+                              selected: state.filter == category,
+                              onTap: () => controller.setFilter(category),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        if (records.isEmpty)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: AppEmptyView(
-              title: 'No detections found',
-              message: 'Try another search or complete a new monitor scan.',
-              icon: Icons.search_off_rounded,
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-            sliver: SliverList.separated(
-              itemCount: records.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final record = records[index];
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 680),
-                    child: _DetectionRecordCard(
-                      detection: record,
-                      expanded: state.expandedIds.contains(record.id),
-                      onTap: () => ref
-                          .read(historyControllerProvider.notifier)
-                          .toggleExpanded(record.id),
+          if (records.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: AppEmptyView(
+                title: 'No detections in this category',
+                message:
+                    'Choose another category or record a future AI result.',
+                icon: Icons.history_toggle_off_rounded,
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 116),
+              sliver: SliverList.separated(
+                itemCount: records.length,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  final detection = records[index];
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 680),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _DetectionCard(detection: detection),
+                          const SizedBox(height: 9),
+                          OutlinedButton.icon(
+                            key: Key('complaint-button-${detection.id}'),
+                            onPressed: () => _openComplaint(detection),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.warning,
+                              side: const BorderSide(color: AppColors.warning),
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surface,
+                            ),
+                            icon: Icon(
+                              _recordedComplaintIds.contains(detection.id)
+                                  ? Icons.check_circle_outline_rounded
+                                  : Icons.markunread_mailbox_outlined,
+                            ),
+                            label: Text(
+                              _recordedComplaintIds.contains(detection.id)
+                                  ? 'Demo complaint recorded'
+                                  : 'Submit complaint to road contractor',
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Future<void> _openComplaint(Detection detection) async {
+    final user = ref.read(authControllerProvider).user;
+    if (user == null) return;
+    final recorded = await showComplaintDialog(
+      context: context,
+      user: user,
+      detection: detection,
+    );
+    if (mounted && recorded == true) {
+      setState(() => _recordedComplaintIds.add(detection.id));
+    }
   }
 }
 
-class _DetectionRecordCard extends StatelessWidget {
-  const _DetectionRecordCard({
-    required this.detection,
-    required this.expanded,
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
     required this.onTap,
+    super.key,
   });
-
-  final Detection detection;
-  final bool expanded;
+  final String label;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = severityColor(detection.severity);
-    return AppCard(
-      key: Key('history-record-${detection.id}'),
-      padding: EdgeInsets.zero,
-      onTap: onTap,
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.topCenter,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.11),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: Icon(Icons.add_road_rounded, color: color),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                detection.damageType,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            SeverityBadge(
-                              severity: detection.severity,
-                              compact: true,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          detection.address,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                        ),
-                        const SizedBox(height: 7),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.schedule_rounded,
-                              size: 15,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                '${AppFormatters.date(detection.capturedAt)} at ${AppFormatters.time(detection.capturedAt)}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    expanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-            if (expanded) ...[
-              const Divider(),
-              Padding(
-                key: Key('history-details-${detection.id}'),
-                padding: const EdgeInsets.all(16),
-                child: _ExpandedDetectionDetails(detection: detection),
-              ),
-            ],
-          ],
-        ),
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      showCheckmark: false,
+      selectedColor: AppColors.foreground,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      labelStyle: TextStyle(
+        color: selected
+            ? Colors.white
+            : Theme.of(context).colorScheme.onSurface,
+        fontWeight: FontWeight.w600,
       ),
+      side: BorderSide(
+        color: selected
+            ? AppColors.foreground
+            : Theme.of(context).colorScheme.outlineVariant,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     );
   }
 }
 
-class _ExpandedDetectionDetails extends StatelessWidget {
-  const _ExpandedDetectionDetails({required this.detection});
-
+class _DetectionCard extends StatelessWidget {
+  const _DetectionCard({required this.detection});
   final Detection detection;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          height: 150,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF94A3B8), Color(0xFF334155)],
-            ),
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _RoadImagePlaceholderPainter(
-                    severityColor: severityColor(detection.severity),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 12,
-                bottom: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.image_outlined, color: Colors.white, size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        'Local image placeholder',
-                        style: TextStyle(color: Colors.white, fontSize: 11),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final itemWidth = (constraints.maxWidth - 12) / 2;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 14,
-              children: [
-                _DetailItem(
-                  width: itemWidth,
-                  label: 'Confidence',
-                  value: AppFormatters.percentage(detection.confidence),
-                  icon: Icons.analytics_outlined,
-                ),
-                _DetailItem(
-                  width: itemWidth,
-                  label: 'Severity',
-                  value: detection.severity.label,
-                  icon: Icons.warning_amber_rounded,
-                ),
-                _DetailItem(
-                  width: itemWidth,
-                  label: 'Date',
-                  value: AppFormatters.date(detection.capturedAt),
-                  icon: Icons.calendar_today_outlined,
-                ),
-                _DetailItem(
-                  width: itemWidth,
-                  label: 'Time',
-                  value: AppFormatters.time(detection.capturedAt),
-                  icon: Icons.schedule_outlined,
-                ),
-                _DetailItem(
-                  width: constraints.maxWidth,
-                  label: 'GPS coordinates',
-                  value:
-                      '${AppFormatters.coordinates(detection.latitude, detection.longitude)} (accuracy ${detection.gpsAccuracy.toStringAsFixed(1)} m)',
-                  icon: Icons.gps_fixed_rounded,
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        Text('Description', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 5),
-        Text(
-          detection.description,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      ],
-    );
-  }
-}
-
-class _DetailItem extends StatelessWidget {
-  const _DetailItem({
-    required this.width,
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final double width;
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
+    return AppCard(
+      key: Key('history-record-${detection.id}'),
+      padding: const EdgeInsets.all(12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 8),
+          _DetectionThumbnail(detection: detection),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.only(top: 6, right: 7),
+                      decoration: BoxDecoration(
+                        color: severityColor(detection.severity),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        detection.damageType.label,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SeverityBadge(severity: detection.severity, compact: true),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                if (detection.isSynthetic) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'DEMO / SYNTHETIC · NOT AI-CONFIRMED',
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 16),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        detection.address,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
                 Text(
-                  label,
+                  '${AppFormatters.date(detection.capturedAt)} · ${AppFormatters.time(detection.capturedAt)}',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
-                  value,
-                  style: Theme.of(context).textTheme.labelMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  detection.isSynthetic
+                      ? 'Demo model score ${AppFormatters.percentage(detection.confidence)}'
+                      : 'AI confidence ${AppFormatters.percentage(detection.confidence)}',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -414,49 +303,66 @@ class _DetailItem extends StatelessWidget {
   }
 }
 
-class _RoadImagePlaceholderPainter extends CustomPainter {
-  const _RoadImagePlaceholderPainter({required this.severityColor});
-
-  final Color severityColor;
+class _DetectionThumbnail extends StatelessWidget {
+  const _DetectionThumbnail({required this.detection});
+  final Detection detection;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final road = Path()
-      ..moveTo(size.width * 0.37, size.height * 0.28)
-      ..lineTo(size.width * 0.63, size.height * 0.28)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(road, Paint()..color = const Color(0xFF29323A));
-    canvas.drawLine(
-      Offset(size.width * 0.5, size.height * 0.34),
-      Offset(size.width * 0.5, size.height),
-      Paint()
-        ..color = const Color(0xFFE2E8F0)
-        ..strokeWidth = 3,
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      color: const Color(0xFFCBD5E1),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.add_road_rounded,
+        color: AppColors.mutedForeground,
+      ),
     );
-    final damageRect = Rect.fromCenter(
-      center: Offset(size.width * 0.57, size.height * 0.72),
-      width: size.width * 0.25,
-      height: size.height * 0.22,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(damageRect, const Radius.circular(6)),
-      Paint()
-        ..color = severityColor.withValues(alpha: 0.15)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(damageRect, const Radius.circular(6)),
-      Paint()
-        ..color = severityColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 82,
+        height: 96,
+        child: detection.imageUrl == null || detection.imageUrl!.isEmpty
+            ? placeholder
+            : Image.network(
+                detection.imageUrl!,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) => progress == null
+                    ? child
+                    : const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                errorBuilder: (context, error, stackTrace) => placeholder,
+              ),
+      ),
     );
   }
+}
+
+class _HistorySkeleton extends StatelessWidget {
+  const _HistorySkeleton();
 
   @override
-  bool shouldRepaint(_RoadImagePlaceholderPainter oldDelegate) {
-    return oldDelegate.severityColor != severityColor;
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+      children: [
+        const SectionHeader(
+          title: 'History',
+          subtitle: 'Loading detections...',
+        ),
+        const SizedBox(height: 22),
+        for (var index = 0; index < 4; index++) ...[
+          Container(
+            height: 120,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ],
+    );
   }
 }

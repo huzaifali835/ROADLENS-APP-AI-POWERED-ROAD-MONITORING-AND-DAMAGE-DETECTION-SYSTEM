@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function ownsDetection(detectionId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/detections/$(detectionId))
+        && get(/databases/$(database)/documents/detections/$(detectionId)).data.id == detectionId
+        && get(/databases/$(database)/documents/detections/$(detectionId)).data.userId == request.auth.uid;
+    }
+
+    function isOwnComplaintPath(complaintId) {
+      return signedIn()
+        && complaintId.matches('^complaint_' + request.auth.uid + '_.+$');
+    }
+
+    match /users/{userId} {
+      allow read: if ownsUser(userId);
+      allow create: if ownsUser(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.role == 'user';
+      allow update: if ownsUser(userId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+
+    match /detections/{detectionId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.id == detectionId;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.id == resource.data.id;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /complaints/{complaintId} {
+      // A deterministic user-prefixed path permits an idempotency read only
+      // while the complaint is absent. Existing documents require ownership.
+      allow get: if (!exists(/databases/$(database)/documents/complaints/$(complaintId))
+          && isOwnComplaintPath(complaintId))
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow list: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.id == complaintId
+        && complaintId == 'complaint_' + request.auth.uid + '_' + request.resource.data.detectionId
+        && request.resource.data.status == 'recorded'
+        && request.resource.data.deliveryStatus == 'deliveryUnavailable'
+        && ownsDetection(request.resource.data.detectionId);
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.id == complaintId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.detectionId == resource.data.detectionId
+        && request.resource.data.status == 'recorded'
+        && request.resource.data.deliveryStatus == 'deliveryUnavailable'
+        && ownsDetection(resource.data.detectionId);
+      allow delete: if false;
+    }
+
+    match /roadResponsibilities/{responsibilityId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

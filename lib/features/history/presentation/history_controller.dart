@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/models/detection.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/detection_repository.dart';
+import '../../auth/presentation/auth_controller.dart';
 
 enum HistoryLoadStatus { loading, ready, error }
 
@@ -10,78 +13,96 @@ class HistoryViewState {
   const HistoryViewState({
     this.status = HistoryLoadStatus.loading,
     this.records = const [],
-    this.query = '',
-    this.expandedIds = const {},
+    this.filter,
     this.errorMessage,
   });
 
   final HistoryLoadStatus status;
   final List<Detection> records;
-  final String query;
-  final Set<String> expandedIds;
+  final DamageType? filter;
   final String? errorMessage;
 
-  List<Detection> get visibleRecords {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) return records;
-    return records
-        .where((record) {
-          return record.id.toLowerCase().contains(normalized) ||
-              record.damageType.toLowerCase().contains(normalized) ||
-              record.address.toLowerCase().contains(normalized) ||
-              record.severity.label.toLowerCase().contains(normalized);
-        })
-        .toList(growable: false);
-  }
+  List<Detection> get visibleRecords => filter == null
+      ? records
+      : records
+            .where((item) => item.damageType == filter)
+            .toList(growable: false);
 
   HistoryViewState copyWith({
     HistoryLoadStatus? status,
     List<Detection>? records,
-    String? query,
-    Set<String>? expandedIds,
+    DamageType? filter,
+    bool clearFilter = false,
     String? errorMessage,
     bool clearError = false,
   }) {
     return HistoryViewState(
       status: status ?? this.status,
       records: records ?? this.records,
-      query: query ?? this.query,
-      expandedIds: expandedIds ?? this.expandedIds,
+      filter: clearFilter ? null : filter ?? this.filter,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
 }
 
 class HistoryController extends StateNotifier<HistoryViewState> {
-  HistoryController(this._repository) : super(const HistoryViewState()) {
+  HistoryController(this._repository, this._userId)
+    : super(const HistoryViewState()) {
     Future<void>.microtask(load);
   }
 
   final DetectionRepository _repository;
+  final String _userId;
+  StreamSubscription<List<Detection>>? _subscription;
+  bool _disposed = false;
 
   Future<void> load() async {
-    state = state.copyWith(status: HistoryLoadStatus.loading, clearError: true);
-    try {
-      final records = await _repository.getAll();
-      state = HistoryViewState(
-        status: HistoryLoadStatus.ready,
-        records: records,
-        query: state.query,
-      );
-    } on Object catch (error) {
-      state = HistoryViewState(
+    await _subscription?.cancel();
+    if (_disposed) return;
+    if (_userId.isEmpty) {
+      state = const HistoryViewState(
         status: HistoryLoadStatus.error,
-        errorMessage: 'Unable to load detection history: $error',
+        errorMessage: 'Sign in to view your detection history.',
       );
+      return;
     }
+    state = state.copyWith(status: HistoryLoadStatus.loading, clearError: true);
+    _subscription = _repository
+        .watchForUser(_userId)
+        .listen(
+          (records) {
+            if (_disposed) return;
+            final sorted = List<Detection>.of(records)
+              ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+            state = HistoryViewState(
+              status: HistoryLoadStatus.ready,
+              records: List.unmodifiable(sorted),
+              filter: state.filter,
+            );
+          },
+          onError: (Object error) {
+            if (_disposed) return;
+            state = HistoryViewState(
+              status: HistoryLoadStatus.error,
+              records: state.records,
+              filter: state.filter,
+              errorMessage: 'Unable to load your detection history: $error',
+            );
+          },
+        );
   }
 
-  void search(String query) => state = state.copyWith(query: query);
+  void setFilter(DamageType? filter) {
+    state = filter == null
+        ? state.copyWith(clearFilter: true)
+        : state.copyWith(filter: filter);
+  }
 
-  void toggleExpanded(String id) {
-    final updated = Set<String>.of(state.expandedIds);
-    updated.contains(id) ? updated.remove(id) : updated.add(id);
-    state = state.copyWith(expandedIds: Set.unmodifiable(updated));
+  @override
+  void dispose() {
+    _disposed = true;
+    unawaited(_subscription?.cancel());
+    super.dispose();
   }
 }
 
@@ -89,5 +110,8 @@ final historyControllerProvider =
     StateNotifierProvider.autoDispose<HistoryController, HistoryViewState>((
       ref,
     ) {
-      return HistoryController(ref.watch(detectionRepositoryProvider));
+      final userId = ref.watch(
+        authControllerProvider.select((state) => state.user?.id ?? ''),
+      );
+      return HistoryController(ref.watch(detectionRepositoryProvider), userId);
     });

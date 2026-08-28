@@ -14,6 +14,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmationController = TextEditingController();
@@ -21,6 +22,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmationController.dispose();
@@ -32,7 +34,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final success = await ref
         .read(authControllerProvider.notifier)
-        .register(_emailController.text, _passwordController.text);
+        .register(
+          _nameController.text,
+          _emailController.text,
+          _passwordController.text,
+        );
     if (success && mounted) context.go('/monitor');
   }
 
@@ -49,6 +55,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextFormField(
+              key: const Key('register-name-field'),
+              controller: _nameController,
+              enabled: !loading,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.name],
+              decoration: const InputDecoration(
+                labelText: 'Full name',
+                prefixIcon: Icon(Icons.person_outline_rounded),
+              ),
+              validator: (value) => (value ?? '').trim().length < 2
+                  ? 'Enter your full name'
+                  : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              key: const Key('register-email-field'),
               controller: _emailController,
               enabled: !loading,
               keyboardType: TextInputType.emailAddress,
@@ -84,8 +107,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                 ),
               ),
-              validator: (value) => (value ?? '').length < 6
-                  ? 'Password must be at least 6 characters'
+              validator: (value) => (value ?? '').length < 8
+                  ? 'Password must be at least 8 characters'
                   : null,
             ),
             const SizedBox(height: 16),
@@ -112,6 +135,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ],
             const SizedBox(height: 22),
             FilledButton(
+              key: const Key('register-button'),
               onPressed: loading ? null : _submit,
               child: loading
                   ? const SizedBox.square(

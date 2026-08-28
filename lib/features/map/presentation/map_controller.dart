@@ -6,7 +6,9 @@ import '../../../data/models/detection.dart';
 import '../../../data/models/geo_location.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/detection_repository.dart';
+import '../../../data/seed/seed_data.dart';
 import '../../../data/services/location_service.dart';
+import '../../auth/presentation/auth_controller.dart';
 
 enum MapLoadStatus { loading, ready, error }
 
@@ -90,14 +92,16 @@ class MapViewState {
 }
 
 class MapViewModel extends StateNotifier<MapViewState> {
-  MapViewModel(this._repository, this._locationService)
-    : super(const MapViewState()) {
+  MapViewModel(this._repository, this._locationService, {String? userId})
+    : _userId = userId ?? SeedData.inspector.id,
+      super(const MapViewState()) {
     Future<void>.microtask(load);
     Future<void>.microtask(refreshLocation);
   }
 
   final DetectionRepository _repository;
   final LocationService _locationService;
+  final String _userId;
   StreamSubscription<GeoLocation>? _locationSubscription;
   bool _disposed = false;
   bool _active = true;
@@ -106,7 +110,7 @@ class MapViewModel extends StateNotifier<MapViewState> {
     if (_disposed) return;
     state = state.copyWith(status: MapLoadStatus.loading, clearError: true);
     try {
-      final records = await _repository.getAll();
+      final records = await _repository.getForUser(_userId);
       if (_disposed) return;
       state = state.copyWith(
         status: MapLoadStatus.ready,
@@ -149,7 +153,7 @@ class MapViewModel extends StateNotifier<MapViewState> {
             LocationPermissionStatus.unknown:
           state = state.copyWith(
             locationStatus: MapLocationStatus.permissionRequired,
-            locationMessage: 'Allow location while using StreetLens to center the map on this phone.',
+            locationMessage: 'Allow location while using RoadLens to center the map on this phone.',
           );
           return;
         case LocationPermissionStatus.permanentlyDenied:
@@ -296,5 +300,8 @@ final mapControllerProvider =
       return MapViewModel(
         ref.watch(detectionRepositoryProvider),
         ref.watch(locationServiceProvider),
+        userId: ref.watch(
+          authControllerProvider.select((state) => state.user?.id ?? ''),
+        ),
       );
     });

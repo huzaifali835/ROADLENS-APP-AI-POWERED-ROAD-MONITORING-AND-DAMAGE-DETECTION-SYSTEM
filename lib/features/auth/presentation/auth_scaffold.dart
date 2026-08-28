@@ -72,7 +72,7 @@ class AuthScaffold extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              'Phase 1 · Secure local mock mode',
+                              'Secure account access powered by Firebase',
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     color: Theme.of(context)

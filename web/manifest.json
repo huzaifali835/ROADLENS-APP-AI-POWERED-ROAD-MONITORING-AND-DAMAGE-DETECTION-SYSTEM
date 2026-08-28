@@ -1,6 +1,6 @@
 {
-    "name": "streetlens",
-    "short_name": "streetlens",
+    "name": "RoadLens",
+    "short_name": "RoadLens",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

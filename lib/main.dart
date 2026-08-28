@@ -1,9 +1,16 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'app/street_lens_app.dart';
+import 'app/firebase_bootstrap.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: StreetLensApp()));
+  final bootstrapper = FirebaseBootstrapper();
+  bootstrapper.start();
+  runApp(
+    ProviderScope(
+      overrides: [firebaseBootstrapperProvider.overrideWithValue(bootstrapper)],
+      child: const FirebaseBootstrap(),
+    ),
+  );
 }

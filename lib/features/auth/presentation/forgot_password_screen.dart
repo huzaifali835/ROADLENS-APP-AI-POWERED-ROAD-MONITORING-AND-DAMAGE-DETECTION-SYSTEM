@@ -41,7 +41,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     return AuthScaffold(
       title: _submitted ? 'Check your email' : 'Reset password',
       subtitle: _submitted
-          ? 'A mock recovery message has been prepared for this Phase 1 flow.'
+          ? 'Firebase has accepted your password reset request.'
           : 'Enter your account email to request a reset link.',
       child: _submitted
           ? Column(
@@ -62,7 +62,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                       SizedBox(height: 12),
                       Text(
-                        'No message was sent. Email delivery will be connected to the real auth service in Phase 2.',
+                        'If an account exists for this email, a reset link will arrive shortly. Check your spam folder too.',
                         textAlign: TextAlign.center,
                       ),
                     ],

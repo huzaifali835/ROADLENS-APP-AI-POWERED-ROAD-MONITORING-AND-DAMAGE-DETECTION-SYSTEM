@@ -1,5 +1,5 @@
 abstract final class AppConstants {
-  static const appName = 'StreetLens';
+  static const appName = 'RoadLens';
   static const appVersion = '1.0.0';
   static const modelVersion = 'Not connected — Phase 3';
   static const referenceWidth = 390.0;

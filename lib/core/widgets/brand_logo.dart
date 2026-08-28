@@ -44,7 +44,7 @@ class BrandLogo extends StatelessWidget {
         Flexible(
           fit: FlexFit.loose,
           child: Text(
-            'StreetLens',
+            'RoadLens',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(

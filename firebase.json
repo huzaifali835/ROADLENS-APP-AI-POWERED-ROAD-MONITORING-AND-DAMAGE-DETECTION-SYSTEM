@@ -1,1 +1,24 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"roadlens-5ac14","appId":"1:985932950674:android:f834de12e0835052618a4b","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"roadlens-5ac14","configurations":{"android":"1:985932950674:android:f834de12e0835052618a4b"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "roadlens-5ac14",
+          "appId": "1:985932950674:android:f834de12e0835052618a4b",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "roadlens-5ac14",
+          "configurations": {
+            "android": "1:985932950674:android:f834de12e0835052618a4b"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

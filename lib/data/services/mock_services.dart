@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -13,9 +14,16 @@ import 'sync_service.dart';
 
 class MockAuthService implements AuthService {
   AppUser? _currentUser;
+  final StreamController<AppUser?> _changes = StreamController.broadcast();
 
   @override
   AppUser? get currentUser => _currentUser;
+
+  @override
+  Stream<AppUser?> userChanges() async* {
+    yield _currentUser;
+    yield* _changes.stream;
+  }
 
   @override
   Future<AppUser> signIn({
@@ -31,17 +39,31 @@ class MockAuthService implements AuthService {
       email: email,
       role: SeedData.inspector.role,
       organization: SeedData.inspector.organization,
+      providerIds: const ['password'],
+      emailVerified: true,
     );
+    _changes.add(_currentUser);
     return _currentUser!;
   }
 
   @override
-  Future<AppUser> register({required String email, required String password}) =>
-      signIn(email: email, password: password);
+  Future<AppUser> register({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    await signIn(email: email, password: password);
+    _currentUser = _currentUser!.copyWith(name: fullName);
+    _changes.add(_currentUser);
+    return _currentUser!;
+  }
 
   @override
-  Future<AppUser> signInWithGoogle() async {
-    _currentUser = SeedData.inspector;
+  Future<AppUser?> signInWithGoogle() async {
+    _currentUser = SeedData.inspector.copyWith(
+      providerIds: const ['google.com'],
+    );
+    _changes.add(_currentUser);
     return _currentUser!;
   }
 
@@ -53,7 +75,15 @@ class MockAuthService implements AuthService {
   }
 
   @override
-  Future<void> signOut() async => _currentUser = null;
+  Future<AppUser> retryProfileInitialization() async => _currentUser!;
+
+  @override
+  Future<void> signOut() async {
+    _currentUser = null;
+    _changes.add(null);
+  }
+
+  Future<void> dispose() => _changes.close();
 }
 
 class MockCameraService implements CameraService {

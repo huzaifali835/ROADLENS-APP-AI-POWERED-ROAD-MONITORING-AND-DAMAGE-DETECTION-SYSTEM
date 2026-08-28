@@ -84,7 +84,7 @@ class _MapContent extends ConsumerWidget {
           children: [
             const SectionHeader(
               title: 'Road Damage Map',
-              subtitle: 'Live phone position and locally stored road reports.',
+              subtitle: 'Live phone position and Firebase demo detections.',
             ),
             const SizedBox(height: 18),
             SizedBox(
@@ -329,7 +329,7 @@ class _SelectedMarkerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      detection.damageType,
+                      detection.damageType.label,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     Text(
@@ -346,12 +346,24 @@ class _SelectedMarkerCard extends StatelessWidget {
               SeverityBadge(severity: detection.severity, compact: true),
             ],
           ),
+          if (detection.isSynthetic) ...[
+            const SizedBox(height: 10),
+            Text(
+              'DEMO / SYNTHETIC · NOT AI-CONFIRMED',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: _MarkerDetail(
-                  label: 'Confidence',
+                  label: detection.isSynthetic
+                      ? 'Demo model score'
+                      : 'Confidence',
                   value: AppFormatters.percentage(detection.confidence),
                 ),
               ),

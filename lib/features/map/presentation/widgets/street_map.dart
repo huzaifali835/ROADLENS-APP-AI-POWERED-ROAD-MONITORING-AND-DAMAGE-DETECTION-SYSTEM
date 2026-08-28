@@ -265,7 +265,7 @@ class _DetectionMarker extends StatelessWidget {
     final color = severityColor(detection.severity);
     return Semantics(
       button: true,
-      label: '${detection.damageType}, ${detection.severity.label}',
+      label: '${detection.damageType.label}, ${detection.severity.label}',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
