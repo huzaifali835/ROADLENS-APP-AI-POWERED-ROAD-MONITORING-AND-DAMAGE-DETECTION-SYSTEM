@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,10 +11,15 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../../data/providers.dart';
+import 'general_object_detection_screen.dart';
 import 'monitor_controller.dart';
 
+typedef GeneralObjectDemoLauncher = Future<void> Function(BuildContext context);
+
 class MonitorScreen extends ConsumerStatefulWidget {
-  const MonitorScreen({super.key});
+  const MonitorScreen({this.generalObjectDemoLauncher, super.key});
+
+  final GeneralObjectDemoLauncher? generalObjectDemoLauncher;
 
   @override
   ConsumerState<MonitorScreen> createState() => _MonitorScreenState();
@@ -21,6 +27,8 @@ class MonitorScreen extends ConsumerStatefulWidget {
 
 class _MonitorScreenState extends ConsumerState<MonitorScreen>
     with WidgetsBindingObserver {
+  bool _openingGeneralObjectDemo = false;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +52,59 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  Future<void> _openGeneralObjectDemo() async {
+    if (!mounted || _openingGeneralObjectDemo) return;
+    setState(() => _openingGeneralObjectDemo = true);
+
+    final monitorController = ref.read(monitorControllerProvider.notifier);
+    Object? transitionFailure;
+    try {
+      await monitorController.releaseCameraForGeneralObjectDemo();
+      if (!mounted) return;
+      final launcher = widget.generalObjectDemoLauncher;
+      if (launcher != null) {
+        await launcher(context);
+      } else {
+        await Navigator.of(context, rootNavigator: true).push<void>(
+          MaterialPageRoute<void>(
+            builder: (context) => const GeneralObjectDetectionScreen(),
+          ),
+        );
+      }
+    } on Object catch (error, stackTrace) {
+      transitionFailure = error;
+      if (kDebugMode) {
+        debugPrint('[RoadLens camera handoff] $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    } finally {
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+        try {
+          await monitorController.restoreCameraAfterGeneralObjectDemo();
+        } on Object catch (error, stackTrace) {
+          transitionFailure ??= error;
+          if (kDebugMode) {
+            debugPrint('[RoadLens camera restore] $error');
+            debugPrintStack(stackTrace: stackTrace);
+          }
+        }
+      }
+      if (mounted) {
+        setState(() => _openingGeneralObjectDemo = false);
+        if (transitionFailure != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'General Object Demo could not open. The Monitor camera was restored.',
+                key: Key('general-object-demo-error'),
+              ),
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -114,7 +175,9 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen>
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         key: const Key('scan-button'),
-                        onPressed: state.canScan || isScanning
+                        onPressed:
+                            !_openingGeneralObjectDemo &&
+                                (state.canScan || isScanning)
                             ? () => ref
                                   .read(monitorControllerProvider.notifier)
                                   .toggleScan()
@@ -135,6 +198,13 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen>
                           isScanning ? 'Stop Scanning' : 'Start AI Scan',
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      _GeneralObjectDemoButton(
+                        opening: _openingGeneralObjectDemo,
+                        onPressed: state.canScan && !_openingGeneralObjectDemo
+                            ? _openGeneralObjectDemo
+                            : null,
+                      ),
                       if (state.hasSampledFrames ||
                           state.scanMessage != null) ...[
                         const SizedBox(height: 16),
@@ -146,6 +216,66 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen>
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GeneralObjectDemoButton extends StatelessWidget {
+  const _GeneralObjectDemoButton({
+    required this.opening,
+    required this.onPressed,
+  });
+
+  final bool opening;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      key: const Key('general-object-demo-button'),
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white54,
+        backgroundColor: Colors.black.withValues(alpha: 0.28),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.34)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      ),
+      child: Row(
+        children: [
+          if (opening)
+            const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: Colors.white,
+              ),
+            )
+          else
+            const Icon(Icons.view_in_ar_rounded),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  opening ? 'Opening demo…' : 'General Object Demo',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Cars, people and common objects',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: opening ? Colors.white54 : Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.chevron_right_rounded),
         ],
       ),
     );

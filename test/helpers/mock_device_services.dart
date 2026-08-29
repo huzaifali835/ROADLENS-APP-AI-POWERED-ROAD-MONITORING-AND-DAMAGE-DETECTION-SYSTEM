@@ -20,8 +20,11 @@ class TestCameraService implements CameraService {
   bool initialized = false;
   bool streaming = false;
   bool disposed = false;
+  int initializeCount = 0;
   int startCount = 0;
   int stopCount = 0;
+  int pauseCount = 0;
+  final List<String> events = [];
   CameraFrameCallback? _callback;
 
   @override
@@ -44,6 +47,8 @@ class TestCameraService implements CameraService {
 
   @override
   Future<void> initialize() async {
+    initializeCount++;
+    events.add('initialize');
     if (initializeError case final error?) throw error;
     initialized = true;
   }
@@ -55,6 +60,7 @@ class TestCameraService implements CameraService {
   }) async {
     if (!initialized) await initialize();
     startCount++;
+    events.add('startFrameStream');
     streaming = true;
     _callback = onFrame;
   }
@@ -68,14 +74,18 @@ class TestCameraService implements CameraService {
   @override
   Future<void> stopFrameStream() async {
     stopCount++;
+    events.add('stopFrameStream');
     streaming = false;
     _callback = null;
   }
 
   @override
   Future<void> pause() async {
+    pauseCount++;
+    events.add('pause:start');
     await stopFrameStream();
     initialized = false;
+    events.add('pause:complete');
   }
 
   @override

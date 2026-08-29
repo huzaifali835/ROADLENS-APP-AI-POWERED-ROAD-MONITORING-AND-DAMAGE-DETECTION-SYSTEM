@@ -119,6 +119,8 @@ class MonitorController extends StateNotifier<MonitorViewState> {
   StreamSubscription<GeoLocation>? _locationSubscription;
   bool _disposed = false;
   bool _active = true;
+  bool _externalCameraOwner = false;
+  bool _locationNeedsRestore = false;
   int _scanGeneration = 0;
 
   Future<void> refreshDeviceState() async {
@@ -223,6 +225,7 @@ class MonitorController extends StateNotifier<MonitorViewState> {
   Future<void> _prepareLocation() async {
     if (_disposed || !_active) return;
     await _stopLocationUpdates();
+    if (!_canUpdate) return;
     state = state.copyWith(
       locationStatus: MonitorLocationStatus.checking,
       clearLocationMessage: true,
@@ -350,7 +353,9 @@ class MonitorController extends StateNotifier<MonitorViewState> {
   }
 
   Future<void> startScan() async {
-    if (_disposed || !_active || !state.canScan) return;
+    if (_disposed || !_active || _externalCameraOwner || !state.canScan) {
+      return;
+    }
     if (state.status == MonitorScanStatus.scanning) return;
     final generation = ++_scanGeneration;
     state = state.copyWith(
@@ -401,11 +406,50 @@ class MonitorController extends StateNotifier<MonitorViewState> {
     await _cameraService.stopFrameStream();
   }
 
+  Future<void> releaseCameraForGeneralObjectDemo() async {
+    if (_disposed || _externalCameraOwner) return;
+    _externalCameraOwner = true;
+    try {
+      await stopScan();
+      await _cameraService.stopFrameStream();
+      await _cameraService.pause();
+      if (_disposed) return;
+      state = state.copyWith(
+        status: MonitorScanStatus.idle,
+        cameraStatus: CameraInitializationStatus.paused,
+        scanMessage: state.hasSampledFrames
+            ? 'AI model not connected — Phase 3'
+            : null,
+      );
+    } on Object {
+      _externalCameraOwner = false;
+      rethrow;
+    }
+  }
+
+  Future<void> restoreCameraAfterGeneralObjectDemo() async {
+    if (_disposed) return;
+    _externalCameraOwner = false;
+    state = state.copyWith(
+      status: MonitorScanStatus.idle,
+      scanMessage: state.hasSampledFrames
+          ? 'AI model not connected — Phase 3'
+          : null,
+    );
+    if (!_active) return;
+    await _prepareCamera();
+    if (_locationNeedsRestore) {
+      _locationNeedsRestore = false;
+      unawaited(_prepareLocation());
+    }
+  }
+
   Future<void> onAppInactive() async {
     if (_disposed || !_active) return;
     _active = false;
     await stopScan();
     await _stopLocationUpdates();
+    _locationNeedsRestore = true;
     await _cameraService.pause();
     if (_disposed) return;
     state = state.copyWith(cameraStatus: CameraInitializationStatus.paused);
@@ -414,6 +458,8 @@ class MonitorController extends StateNotifier<MonitorViewState> {
   Future<void> onAppResumed() async {
     if (_disposed) return;
     _active = true;
+    if (_externalCameraOwner) return;
+    _locationNeedsRestore = false;
     await refreshDeviceState();
   }
 
@@ -434,6 +480,8 @@ class MonitorController extends StateNotifier<MonitorViewState> {
   void dispose() {
     _disposed = true;
     _active = false;
+    _externalCameraOwner = false;
+    _locationNeedsRestore = false;
     _scanGeneration++;
     unawaited(_locationSubscription?.cancel());
     unawaited(_cameraService.stopFrameStream());
